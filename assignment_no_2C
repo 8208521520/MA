@@ -1,0 +1,153 @@
+section .data
+        ; Define a newline character
+        nline      db    10,10
+        nline_len  equ   $-nline  ; Calculate the length of the newline
+
+        ; Define a space character
+        space      db    " "
+
+        ; Header message for the assignment
+        ano        db    10, " Assignment No : "
+                    db    10,"-------------------------------------------------------------------",
+                    db    10," Block transfer without string instruction overlapping ",
+                    db    10,"-------------------------------------------------------------------",
+        ano_len    equ   $-ano      ; Calculate the length of the header message
+
+        ; Messages for before and after the block transfer
+        bmsg       db    10,"Before Transfer::"
+        bmsg_len   equ   $-bmsg
+
+        amsg       db    10,"After Transfer::"
+        amsg_len   equ   $-amsg
+        
+        ; Messages for source and destination blocks
+        smsg       db    10,"	Source Block		:"
+        smsg_len   equ   $-smsg
+
+        dmsg       db    10,"	Destination Block	:"
+        dmsg_len   equ   $-dmsg
+
+        ; Source block of data
+        sblock     db    11h,22h,33h,44h,55h,66h,77h,88h
+        ; Destination block initialized to zero
+        dblock     times 8 db 0  ; Allocate space for 8 bytes in the destination block
+    
+;------------------------------------------------------------------------------
+section .bss
+        ; Reserve space for a character answer
+        char_ans   resB  2  ; Reserve 2 bytes for character representation
+    
+;-----------------------------------------------------------------------------
+
+%macro  Print  2
+        ; Macro to print a message to stdout
+        MOV     RAX,1        ; Syscall number for sys_write
+        MOV     RDI,1        ; File descriptor for stdout
+        MOV     RSI,%1       ; Pointer to the message
+        MOV     RDX,%2       ; Length of the message
+        syscall              ; Call the kernel
+%endmacro
+
+;---------------------------------------------------------------       
+
+section .text
+        global _start
+
+_start:
+        ; Print the assignment header
+        Print   ano,ano_len
+
+        ; Print the before transfer message
+        Print   bmsg,bmsg_len
+
+        ; Print the source block message
+        Print   smsg,smsg_len
+        mov     rsi,sblock    ; Load the address of the source block
+        call    disp_block    ; Display the source block
+
+        ; Print the destination block message
+        Print   dmsg,dmsg_len
+        mov     rsi,dblock-2  ; Point to the start of the destination block (overlapped)
+        call    disp_block    ; Display the destination block
+        
+        ; Perform the block transfer operation
+        call    BT_O
+
+        ; Print the after transfer message
+        Print   amsg,amsg_len
+
+        ; Print the source block again
+        Print   smsg,smsg_len
+        mov     rsi,sblock    ; Load the address of the source block
+        call    disp_block    ; Display the source block again
+
+        ; Print the destination block again
+        Print   dmsg,dmsg_len
+        mov     rsi,dblock-2  ; Point to the start of the destination block
+        call    disp_block    ; Display the destination block again
+
+Exit:
+;-----------------------------------------------------------------
+BT_O:
+        ; Perform block transfer from source to destination
+        mov     rsi,sblock+4  ; Point to the end of the source block (offset 4)
+        mov     rdi,dblock+2   ; Point to the end of the destination block (offset 2)
+        mov     rcx,5         ; Set counter for 5 bytes to transfer
+
+back:
+        ; Transfer bytes one by one
+        mov     al,[rsi]      ; Load byte from source
+        mov     [rdi],al      ; Store byte to destination
+
+        ; Decrement pointers and counter
+        dec     rsi
+        dec     rdi
+        dec     rcx
+        jnz     back          ; Repeat until all bytes are transferred
+RET
+;-----------------------------------------------------------------
+disp_block:
+        ; Display 8 bytes of a block
+        mov     rbp,8         ; Set counter for 8 bytes
+
+next_num:
+        mov     al,[rsi]      ; Load the next byte
+        push    rsi           ; Preserve the source pointer
+
+        ; Call function to display byte as hex
+        call    Disp_8
+        Print   space,1       ; Print space between bytes
+        
+        pop     rsi           ; Restore source pointer
+        inc     rsi           ; Move to next byte
+        
+        dec     rbp           ; Decrement byte counter
+        jnz     next_num      ; Repeat for all bytes
+RET
+;---------------------------------------------------------------
+Disp_8:
+        ; Convert and display a byte as hexadecimal
+        MOV     RSI,char_ans+1 ; Prepare storage for characters
+        MOV     RCX,2          ; We need to print 2 hex digits
+        MOV     RBX,16         ; Base 16 for hexadecimal
+
+next_digit:
+        XOR     RDX,RDX       ; Clear RDX for division
+        DIV     RBX            ; Divide AL by 16
+
+        CMP     DL,9          ; Check if digit is less than or equal to 9
+        JBE     add30         ; If yes, jump to add30
+        ADD     DL,07H        ; Convert to ASCII (A-F)
+
+add30:
+        ADD     DL,30H        ; Convert to ASCII (0-9)
+        MOV     [RSI],DL      ; Store the ASCII character
+
+        DEC     RSI            ; Move to previous character position
+        DEC     RCX            ; Decrement digit counter
+        JNZ     next_digit     ; Repeat for both digits
+
+        ; Print the character representation of the byte
+        Print   char_ans,2    ; Print the converted hex characters
+ret
+;-------------------------------------------------------------------
